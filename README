@@ -1,0 +1,79 @@
+# ASCENT–AxonML Integration Summary
+
+## Objective
+Build a integration between ASCENT and AxonML that:
+- Replaces NEURON simulations with fast ML surrogates
+- Supports ASCENT protocols (`activation`, `block`, `finite_amplitudes`)
+- Saves output in structured format for downstream analysis
+- Is modular, extensible, and batch-capable
+---
+
+## File Structure and Module Roles
+
+```
+ascent-axonml/
+├── run_controls_axonml.py          # Main simulation driver for one fiber
+├── submit_axonml.py                # CLI batch job submitter
+└── axonml_adapter/
+    ├── callbacks.py               # saving config → AxonML callbacks
+    ├── latency_logger.py          # AP latency extraction callback
+    ├── sfap_callback.py           # Spike waveform extraction callback
+    ├── saving.py                  # save_result_as_npz()
+    ├── protocol.py                # run_finite_amplitudes / block_threshold
+    ├── batch_runner.py            # Batch simulation across multiple fibers
+```
+
+---
+
+## Core Features Implemented
+
+| Feature | Supported | Notes |
+|--------|-----------|-------|
+| Callback system | ✔️ | Dynamically parses ASCENT `saving` config |
+| Vm recording | ✔️ | Uses `VmLogger()` |
+| AP latency | ✔️ | Custom `LatencyLogger()` |
+| sfAP waveform | ✔️ | Custom `SfapLogger()` |
+| Threshold search | ✔️ | Binary search via `calculate_thresholds()` |
+| Finite amplitude run | ✔️ | Implemented in `run_finite_amplitudes_protocol()` |
+| Block threshold logic | ✔️ | Implemented in `run_block_threshold_protocol()` |
+| Structured `.npz` output | ✔️ | With threshold, latency, sfap, Vm, etc. |
+| Batch execution | ✔️ | Groups fibers with same shape + runs together |
+| GPU support (optional) | ⚠️ | Ready to use with `model.to("cuda")` |
+
+---
+
+## Example Usage (in `run_controls_axonml.py`)
+
+```python
+from axonml_adapter.callbacks import translate_saving_to_callbacks
+from axonml_adapter.saving import save_result_as_npz
+
+callbacks = translate_saving_to_callbacks(saving_config, threshold, dt, fiber.nodecount)
+model.run(ve, diam, dt=dt, callbacks=callbacks)
+
+fiber_result = {
+    "threshold": amp,
+    "ap_latency": latency_logger.record(),
+    "sfap": sfap_logger.record(),
+    "Vm": vm_logger.record()
+}
+save_result_as_npz(output_dir, fiber_id, fiber_result)
+```
+
+---
+
+## Future Extensions (Optional)
+
+- Add `i_na`, `i_k` recording when surrogate supports channel currents
+- Add auto-evaluation suite (recruitment curves, activation maps)
+- Support for `intrinsic_activity` protocols
+- CLI flags for `--use-gpu`, `--export-csv`, etc.
+
+---
+
+## Summary
+A functional ASCENT–AxonML integration backend that:
+- Accelerates simulation
+- Supports multiple modes
+- Exports rich, analyzable outputs
+- Maintains modular and extensible architecture
