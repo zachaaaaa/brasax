@@ -40,3 +40,42 @@ def run_finite_amplitudes_protocol(model, ve, diam, dt, amps, callbacks):
         results[amp_key] = result_entry
 
     return results
+
+
+def run_block_threshold_protocol(model, ve, diam, dt, amps, callbacks, ap_key='APCount'):
+    """
+    Runs AxonML with increasing amplitudes and returns the lowest amplitude
+    at which the fiber stops firing (i.e., block threshold).
+
+    :param model: AxonML surrogate model
+    :param ve: extracellular potential [T, 1, 1, N]
+    :param diam: fiber diameter [1]
+    :param dt: timestep
+    :param amps: list of amplitudes
+    :param callbacks: list of callbacks
+    :param ap_key: callback class name to check (default 'APCount')
+    :return: block threshold amplitude (or None if not found)
+    """
+    amp_fired = []
+    for amp in amps:
+        for cb in callbacks:
+            if hasattr(cb, 'reset'):
+                cb.reset()
+
+        with torch.no_grad():
+            model.run(np.float32(ve * amp), np.float32(diam), dt=dt, callbacks=callbacks, reinit=True)
+
+        ap_result = None
+        for cb in callbacks:
+            if cb.__class__.__name__ == ap_key:
+                ap_result = cb.record()
+                break
+
+        fired = bool(np.any(ap_result)) if isinstance(ap_result, (np.ndarray, list)) else bool(ap_result)
+        amp_fired.append(fired)
+
+        # detect first non-firing after a firing
+        if len(amp_fired) >= 2 and amp_fired[-2] == True and amp_fired[-1] == False:
+            return amp
+
+    return None
